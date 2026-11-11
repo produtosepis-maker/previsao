@@ -257,7 +257,9 @@
     </div>
 
     <script>
-        const apiUrl = 'https://apiprevmet3.inmet.gov.br/previsao/5300108';
+        const targetUrl = 'https://apiprevmet3.inmet.gov.br/previsao/5300108';
+        // Utilizando um proxy CORS público para contornar bloqueios do navegador ao rodar localmente
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
 
         async function fetchWeatherData() {
             const loadingEl = document.getElementById('loading');
@@ -266,163 +268,21 @@
             const subtitleEl = document.getElementById('location-subtitle');
 
             try {
-                // Requisição à API do INMET
-                const response = await fetch(apiUrl);
+                const response = await fetch(proxyUrl);
                 
                 if (!response.ok) {
                     throw new Error(`Erro HTTP! Status: ${response.status}`);
                 }
 
-                const data = await response.json();
+                const wrapperData = await response.json();
                 
-                // O INMET costuma retornar um objeto onde a chave principal é o código da cidade ou contém as datas diretamente.
-                // Vamos tratar a estrutura padrão da API de previsão.
+                // O AllOrigins retorna o conteúdo da URL original dentro da propriedade .contents em formato de string JSON
+                const data = JSON.parse(wrapperData.contents);
+                
                 processWeatherData(data);
 
                 loadingEl.style.display = 'none';
                 weatherDataEl.style.display = 'block';
 
             } catch (error) {
-                console.error("Erro ao buscar dados:", error);
-                loadingEl.style.display = 'none';
-                
-                errorEl.style.display = 'block';
-                errorEl.innerHTML = `
-                    <div class="error-msg">
-                        <h3><i class="fa-solid fa-triangle-exclamation"></i> Falha ao carregar os dados da API</h3>
-                        <p>Não foi possível conectar diretamente ao endpoint do INMET (${apiUrl}). Isso geralmente ocorre por restrições de <strong>CORS</strong> do navegador ou instabilidade temporária no servidor de origem.</p>
-                        <br>
-                        <p><strong>Dica de contorno:</strong> Tente rodar este arquivo HTML utilizando um servidor local (como a extensão Live Server do VS Code) ou desative temporariamente as políticas de CORS do seu navegador para fins de teste.</p>
-                    </div>
-                `;
-                subtitleEl.textContent = "Erro na conexão com o serviço.";
-            }
-        }
-
-        function processWeatherData(data) {
-            // A API do INMET retorna um JSON estruturado com o código da cidade como chave raiz, 
-            // contendo as datas como subpropriedades. Ex: data["5300108"] ou diretamente as chaves de data.
-            const cityKey = Object.keys(data)[0];
-            const forecastDays = data[cityKey] || data;
-
-            const subtitleEl = document.getElementById('location-subtitle');
-            subtitleEl.textContent = `Município / Código IBGE: ${cityKey || '5300108'}`;
-
-            const tabsContainer = document.getElementById('days-tabs');
-            const contentContainer = document.getElementById('days-content-container');
-
-            tabsContainer.innerHTML = '';
-            contentContainer.innerHTML = '';
-
-            const dates = Object.keys(forecastDays);
-
-            if (dates.length === 0) {
-                subtitleEl.textContent = "Nenhuma previsão encontrada para este local.";
-                return;
-            }
-
-            dates.forEach((dateStr, index) => {
-                const dayData = forecastDays[dateStr];
-                const isActive = index === 0 ? 'active' : '';
-
-                // Criar Aba do Dia
-                const tabButton = document.createElement('button');
-                tabButton.className = `day-tab ${isActive}`;
-                tabButton.textContent = formatDateLabel(dateStr);
-                tabButton.onclick = () => switchDay(index);
-                tabsContainer.appendChild(tabButton);
-
-                // Criar Bloco de Conteúdo do Dia
-                const contentDiv = document.createElement('div');
-                contentDiv.className = `forecast-content ${isActive}`;
-                contentDiv.id = `day-content-${index}`;
-
-                let periodsHTML = `<div class="date-title"><i class="fa-regular fa-calendar-days"></i> Previsão para ${dateStr}</div><div class="periods-grid">`;
-
-                // Iterar sobre os períodos do dia (Manhã, Tarde, Noite, etc.)
-                const periods = Object.keys(dayData);
-                
-                periods.forEach(period => {
-                    const info = dayData[period];
-                    
-                    periodsHTML.తారు `
-                        <div class="period-card">
-                            <div class="period-title">
-                                <i class="fa-solid ${getPeriodIcon(period)}"></i> ${capitalizeFirst(period)}
-                            </div>
-                            <div class="period-info">
-                                <div class="info-row">
-                                    <span class="info-label"><i class="fa-solid fa-cloud"></i> Condição:</span>
-                                    <span class="info-value">${info.descricao || info.resumo || 'Não informada'}</span>
-                                </div>
-                                <div class="info-row">
-                                    <span class="info-label"><i class="fa-solid fa-temperature-arrow-up"></i> Temp. Máx:</span>
-                                    <span class="info-value">${info.temp_max ? info.temp_max + '°C' : (info.temperatura_maxima || 'N/D')}</span>
-                                </div>
-                                <div class="info-row">
-                                    <span class="info-label"><i class="fa-solid fa-temperature-arrow-down"></i> Temp. Mín:</span>
-                                    <span class="info-value">${info.temp_min ? info.temp_min + '°C' : (info.temperatura_minima || 'N/D')}</span>
-                                </div>
-                                <div class="info-row">
-                                    <span class="info-label"><i class="fa-solid fa-wind"></i> Vento:</span>
-                                    <span class="info-value">${info.intensidade_vento || info.vento || 'Fraco/Moderado'}</span>
-                                </div>
-                                <div class="info-row">
-                                    <span class="info-label"><i class="fa-solid fa-compass"></i> Direção:</span>
-                                    <span class="info-value">${info.direcao_vento || 'N/D'}</span>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                });
-
-                periodsHTML += `</div>`;
-                contentDiv.innerHTML = periodsHTML;
-                contentContainer.appendChild(contentDiv);
-            });
-        }
-
-        function switchDay(selectedIndex) {
-            const tabs = document.querySelectorAll('.day-tab');
-            const contents = document.querySelectorAll('.forecast-content');
-
-            tabs.forEach((tab, idx) => {
-                if (idx === selectedIndex) {
-                    tab.classList.add('active');
-                } else {
-                    tab.classList.remove('active');
-                }
-            });
-
-            contents.forEach((content, idx) => {
-                if (idx === selectedIndex) {
-                    content.classList.add('active');
-                } else {
-                    content.classList.remove('active');
-                }
-            });
-        }
-
-        function formatDateLabel(dateStr) {
-            // Tenta formatar a data string (ex: 'DD/MM/YYYY' ou 'YYYY-MM-DD') para algo amigável se possível
-            return dateStr;
-        }
-
-        function capitalizeFirst(string) {
-            if (!string) return '';
-            return string.charAt(0).toUpperCase() + string.slice(1).toLowerCase();
-        }
-
-        function getPeriodIcon(period) {
-            const p = period.toLowerCase();
-            if (p.includes('manha')) return 'fa-sun';
-            if (p.includes('tarde')) return 'fa-cloud-sun';
-            if (p.includes('noite')) return 'fa-moon';
-            return 'fa-clock';
-        }
-
-        // Executar a busca ao carregar a página
-        fetchWeatherData();
-    </script>
-</body>
-</html>
+                console.error("Erro ao buscar dados
